@@ -1,10 +1,12 @@
 import speech_recognition as sr
 import openai
-from google.cloud import texttospeech
 from playsound import playsound
 from dotenv import load_dotenv 
 import requests
 import os
+import io
+from pydub import AudioSegment
+from pydub.playback import play
 
 load_dotenv()
 
@@ -25,10 +27,9 @@ def text_to_speech(text):
 
     response = requests.post(url, headers=headers, json=req_body)
 
-    #TODO: Stream directly instead of writing the file
-    with open("output.mp3", "wb") as out:
-        out.write(response.content)
-    playsound("output.mp3")
+    audio_data = io.BytesIO(response.content)
+    audio_segment = AudioSegment.from_file(audio_data, format="mp3")
+    play(audio_segment)    
 
 r = sr.Recognizer()
 
@@ -51,14 +52,22 @@ def get_response(prompt):
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "user", "content": prompt}
-                ]
-
+                ],
+            stream=True
             )
-    return response.choices[0].message.content
+
+    output_string = ''
+
+    for idx, chunk in enumerate(response):
+        if idx != 0:
+            output_string += chunk.choices[0].delta.content
+
+            if output_string[-1] == '.':
+                text_to_speech(output_string)
+                output_string = ''
 
 while True:
     command = get_voice_command()
     if command:
         response = get_response(command)
         print(response)
-        text_to_speech(response)
