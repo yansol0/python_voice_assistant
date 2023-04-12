@@ -2,18 +2,32 @@ import speech_recognition as sr
 import openai
 from google.cloud import texttospeech
 from playsound import playsound
+from dotenv import load_dotenv 
+import requests
+import os
 
-openai.api_key = "OPENAI_KEY"
+load_dotenv()
 
-client = texttospeech.TextToSpeechClient.from_service_account_json('google.json')
+openai.api_key = os.getenv('OPEN_AI_API_KEY')
+elevenlabs_api_key = os.getenv('ELEVEN_LABS_API_KEY')
 
 def text_to_speech(text):
-    synthesis_input = texttospeech.SynthesisInput(text=text)
-    voice = texttospeech.VoiceSelectionParams(language_code="en-AU", ssml_gender=texttospeech.SsmlVoiceGender.MALE)
-    audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
-    response = client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
+    req_body = {
+        "text": text,
+        "voice_settings": {
+            "stability": 0,
+            "similarity_boost": 0
+        }
+     }
+
+    url = "https://api.elevenlabs.io/v1/text-to-speech/ntc4LoN5mYFjO8ppbtq2"
+    headers = {"xi-api-key": elevenlabs_api_key}
+
+    response = requests.post(url, headers=headers, json=req_body)
+
+    #TODO: Stream directly instead of writing the file
     with open("output.mp3", "wb") as out:
-        out.write(response.audio_content)
+        out.write(response.content)
     playsound("output.mp3")
 
 r = sr.Recognizer()
@@ -23,7 +37,7 @@ def get_voice_command():
         print("Speak now...")
         r.adjust_for_ambient_noise(source)
         audio = r.listen(source)
-        print("Listening...")
+        print("Capturing input...")
         try:
             text = r.recognize_google(audio)
             print(f"You said: {text}")
@@ -32,20 +46,19 @@ def get_voice_command():
             print("Sorry, I didn't understand that.")
             return None
 
-def get_gpt3_response(prompt):
-    response = openai.Completion.create(
-        engine="curie",
-        prompt=prompt,
-        max_tokens=1024,
-        n=1,
-        stop=None,
-        temperature=0.5,
-    )
-    return response.choices[0].text.strip()
+def get_response(prompt):
+    response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "user", "content": prompt}
+                ]
+
+            )
+    return response.choices[0].message.content
 
 while True:
     command = get_voice_command()
     if command:
-        response = get_gpt3_response(command)
+        response = get_response(command)
         print(response)
         text_to_speech(response)
